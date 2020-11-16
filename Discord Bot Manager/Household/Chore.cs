@@ -10,8 +10,8 @@ namespace Discord_Bot_Manager.Household
     class Chore
     {
         public int Days = 0;
-        public IGuildUser[] Users;
-        public IGuildUser CurrentUser;
+        public string[] Users;
+        public string CurrentUser;
         public string name;
         public DateTime DateNextDue;
         public DateTime ReminderTime;
@@ -20,6 +20,34 @@ namespace Discord_Bot_Manager.Household
         {
             this.name = name;
             DateNextDue = new DateTime(2000, 11, 24);
+        }
+
+        public override string ToString()
+        {
+            string output = "chores new " + name + " ";
+            if (Users != null)
+            {
+                foreach (string user in Users)
+                {
+                    if (user != null || user.Length > 1)
+                    {
+                        output += "-p " + user+ " ";
+                    }
+                }
+
+                if (CurrentUser != null && CurrentUser != null && CurrentUser.Length > 1)
+                {
+                    output += "-c " + CurrentUser + " ";
+                }
+            }
+            output += "-s " + Days;
+
+            if (DateNextDue != new DateTime(2000, 11, 24))
+            {
+                output += "-$ " + DateNextDue.ToShortDateString();
+            }
+
+            return output;
         }
 
         public Chore Copy()
@@ -38,15 +66,15 @@ namespace Discord_Bot_Manager.Household
         {
             if (Users == null) return "";
             string returnVal = " | ";
-            foreach (IGuildUser user in Users)
+            foreach (string user in Users)
             {
                 if (user.Equals(CurrentUser))
                 {
-                    returnVal += "**" + user.Nickname + "** -> ";
+                    returnVal += "**" + user + "** -> ";
                 }
                 else
                 {
-                    returnVal += user.Nickname + " -> ";
+                    returnVal += user + " -> ";
                 }
             }
 
@@ -58,7 +86,7 @@ namespace Discord_Bot_Manager.Household
             return DateNextDue != new DateTime(2000, 11, 24) && (DateNextDue - DateTime.Now).Duration().TotalDays <= 0;
         }
 
-        public void ToggleUser(IGuildUser user)
+        public void ToggleUser(string user)
         {
             if (Users == null)
             {
@@ -66,7 +94,7 @@ namespace Discord_Bot_Manager.Household
             }
             else if (Users.Contains(user))
             {
-                Users = Users.Length > 1 ? Users.Where(u => u != user).ToArray() : new IGuildUser[0];
+                Users = Users.Length > 1 ? Users.Where(u => u != user).ToArray() : new string[0];
             }
             else
             {
@@ -74,7 +102,7 @@ namespace Discord_Bot_Manager.Household
             }
         }
 
-        public void ToggleUsers(IGuildUser[] users)
+        public void ToggleUsers(string[] users)
         {
             foreach (var user in users) ToggleUser(user);
         }
@@ -92,7 +120,7 @@ namespace Discord_Bot_Manager.Household
             NextUser();
         }
 
-        public void SetCurrentUser(IGuildUser user)
+        public void SetCurrentUser(string user)
         {
             CurrentUser = user;
         }

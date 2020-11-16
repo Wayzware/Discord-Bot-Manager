@@ -10,13 +10,15 @@ using System.Windows.Forms.VisualStyles;
 using Discord;
 using Discord.WebSocket;
 using System.IO;
+using Discord.Audio.Streams;
 
 namespace Discord_Bot_Manager.Household
 {
     internal class Household
     {
-        private readonly string TOKEN = File.ReadAllText("household_token").Trim(); //TODO: Remove this from being hardcoded
+        private readonly string TOKEN = File.ReadAllText(DIRECTORY + "\\household_token").Trim();
         private const char CMD_INDICATOR = '!'; //all commands must start with this character
+        private const string DIRECTORY = "C:\\Users\\Jacob\\Documents\\Discord Bot Manager";
 
         private DiscordSocketClient _client;
         private readonly IConsoleSocket _consoleSocket;
@@ -70,19 +72,21 @@ namespace Discord_Bot_Manager.Household
 
             switch (message.Channel)
             {
-                case IGuildChannel _:
+                case IGuildChannel c:
+                    _chores ??= new Dictionary<ulong, Chore[]>();
+                    if (!_chores.ContainsKey(c.GuildId)) await LoadGuildChores(c);
                     await ProcessSeverCommand(message);
                     break;
-                case IDMChannel _:
+                //case IDMChannel _:
                     //TODO: implement DM commands
-                    break;
+                //    break;
                 default:
                     await message.Channel.SendMessageAsync("I don't support this type of chat yet");
                     break;
             }
         }
 
-        private async Task ProcessSeverCommand(SocketMessage message) //the big one
+        private async Task ProcessSeverCommand(SocketMessage message, bool alert = true)
         {
             string command = message.Content.Remove(0, 1);
             command += " ";
@@ -102,7 +106,7 @@ namespace Discord_Bot_Manager.Household
             }
             else if (commandArr[0] == "chores" || commandArr[0] == "chore")
             {
-                await ChoresHandler(commandArr.Length > 1 ? commandArr[1..] : new string[0], (IGuildChannel) message.Channel);
+                await ChoresHandler(commandArr.Length > 1 ? commandArr[1..] : new string[0], (IGuildChannel) message.Channel, alert);
             }
             else
             {
@@ -111,19 +115,56 @@ namespace Discord_Bot_Manager.Household
 
         }
 
-        private async Task LoadGuildChores(ulong guildId)
+        private async Task ProcessServerCommand(string line, IGuildChannel channel, bool alert = true)
         {
-            //TODO: find file in directory and load its data into the main dictionary
+            string command = line;
+            command += " ";
+
+
+            string[] commandArr = Wayzbot.CommandToArray(command, ' ');
+            if (commandArr.Length == 0)
+            {
+                //await BroadcastInvalidCommandMessage(channel);
+                return;
+            }
+
+            //each initial command should be called from this if statement
+            if (commandArr[0] == "help")
+            {
+                //await BroadcastHelpMessage(message.Channel);
+            }
+            else if (commandArr[0] == "chores" || commandArr[0] == "chore")
+            {
+                await ChoresHandler(commandArr.Length > 1 ? commandArr[1..] : new string[0], channel, alert);
+            }
+            else
+            {
+                //await BroadcastInvalidCommandMessage(message.Channel);
+            }
         }
 
-        private async Task LoadAllGuildChores()
+        private async Task LoadGuildChores(IGuildChannel channel)
         {
-            //TODO: for each file in the defined directory
+            if (File.Exists(DIRECTORY + "\\" + channel.GuildId + ".wcmd"))
+            {
+                foreach (string line in (File.ReadAllLines(DIRECTORY + "\\" + channel.GuildId + ".wcmd")))
+                {
+                    if (line != "")
+                    {
+                        await ProcessServerCommand(line, channel, false);
+                    }
+                }
+            }
         }
 
         private async Task SaveGuildChores(ulong guildId)
         {
-
+            string output = "";
+            if (_chores.ContainsKey(guildId))
+            {
+                output = _chores[guildId].Aggregate("", (current, chore) => current + (chore + "\n"));
+            }
+            await File.WriteAllTextAsync(DIRECTORY + "\\" + guildId + ".wcmd", output);
         }
 
         private async Task SaveAllGuildChores()
@@ -145,25 +186,25 @@ namespace Discord_Bot_Manager.Household
                 "       `delete <chore name>` | deletes a chore\n" +
                 "       `done <chore name>` | do this when you complete a chore\n" +
                 "       `due` | lists the due chores and who's turn it is\n" +
-                "       `edit <chore name> <[-s <every x days>] [-p *<person to toggle>] [-c <current person>]>`\n" +
+                "       `edit <chore name> <[-s <every x days>] [-p <person to toggle>] [-c <current person>]>`\n" +
                 "       `list` | lists all of the chores and who currently needs to do them\n" +
                 "       `new <name> [-(s)chedule <every x days>] [-(p)eople *<person to toggle>] [-c <current person>]`\n" +
                 "       `skip <chore name>` | skips over the current person" +
                 "\n" +
-                "\n" +
-                "**__Available PM commands:__**\n" +
-                "`!help` | shows this\n" +
-                "`!broadcast <message>` | this will broadcast your message anonymously, at a random point in the next 24 hours, to the house discord server\n" +
-                "`!broadcast -now <message>` | this will broadcast your message anonymously and immediately to the house discord server\n" +
-                "`!dm <person> <message>` | this will send the person your message anonymously at a random point withing the next 24 hours\n" +
-                "`!dm -now <person> <message>`\n" +
-                "\n" +
-                "(note: <> indicate required args and [] indicate optional args; * indicates this arg supports using * as a wildcard)";
+                //"\n" +
+                //"**__Available PM commands:__**\n" +
+                //"`!help` | shows this\n" +
+                //"`!broadcast <message>` | this will broadcast your message anonymously, at a random point in the next 24 hours, to the house discord server\n" +
+                //"`!broadcast -now <message>` | this will broadcast your message anonymously and immediately to the house discord server\n" +
+                //"`!dm <person> <message>` | this will send the person your message anonymously at a random point withing the next 24 hours\n" +
+                //"`!dm -now <person> <message>`\n" +
+                //"\n" +
+                "(note: <> indicate required args and [] indicate optional args)";
 
             await channel.SendMessageAsync(helpMessage);
         }
 
-        private async Task ChoresHandler(string[] args, IGuildChannel channel)
+        private async Task ChoresHandler(string[] args, IGuildChannel channel, bool alert = true)
         {
             if(_chores == null) _chores = new Dictionary<ulong, Chore[]>();
             if(!_chores.ContainsKey(channel.GuildId)) _chores[channel.GuildId] = new Chore[0];
@@ -199,7 +240,7 @@ namespace Discord_Bot_Manager.Household
             }
             else if (args[0] == "new")
             {
-                await NewChore(args[1..], channel);
+                await NewChore(args[1..], channel, alert);
             }
             else if (args[0] == "skip")
             {
@@ -209,6 +250,8 @@ namespace Discord_Bot_Manager.Household
             {
                 await BroadcastInvalidCommandMessage((ISocketMessageChannel) channel);
             }
+
+            await SaveGuildChores(channel.GuildId);
         }
 
         private async Task ChoreSkip(string choreName, IGuildChannel channel)
@@ -230,11 +273,11 @@ namespace Discord_Bot_Manager.Household
                 : "Chore not found");
         }
 
-        private async Task NewChore(string[] args, IGuildChannel channel)
+        private async Task NewChore(string[] args, IGuildChannel channel, bool message = true)
         {
             if (args.Length < 1)
             {
-                await BroadcastInvalidCommandMessage((ISocketMessageChannel)channel);
+                if(message) await BroadcastInvalidCommandMessage((ISocketMessageChannel)channel);
                 return;
             }
 
@@ -256,11 +299,11 @@ namespace Discord_Bot_Manager.Household
                     if (AlterChore(args[1..], ref _chores[channel.GuildId][index], channel.Guild))
                     {
                         //await SaveGuildChores(channel.GuildId);
-                        await ((ISocketMessageChannel) channel).SendMessageAsync("Successfully added chore!");
+                        if(message) await ((ISocketMessageChannel) channel).SendMessageAsync("Successfully added chore!");
                     }
                     else
                     {
-                        await BroadcastInvalidCommandMessage((ISocketMessageChannel) channel);
+                        if(message) await BroadcastInvalidCommandMessage((ISocketMessageChannel) channel);
                     }
                 }
             }
@@ -328,31 +371,21 @@ namespace Discord_Bot_Manager.Household
                 }
                 else if (flags[index] == "-p")
                 {
-                    if (flags[index + 1] == "*") //wildcard
-                    {
-                        guild.DownloadUsersAsync();
-                        var users = guild.GetUsersAsync().Result.ToArray();
-                        chore.ToggleUsers(users.Where(c => c.Nickname != null && !c.IsBot).ToArray());
-                    }
-                    else
-                    {
-                        guild.DownloadUsersAsync();
-                        var users = guild.GetUsersAsync(CacheMode.AllowDownload).Result.ToArray();
-                        chore.ToggleUsers(users.Where(c => c.Nickname != null && !c.IsBot && c.Nickname == flags[index + 1]).ToArray());
-                    }
+                    chore.ToggleUser(flags[index + 1]);
                 }
                 else if (flags[index] == "-c")
                 {
-                    var users = guild.GetUsersAsync().Result.ToArray();
-
-                    if (users.Any(c => c.Nickname == flags[index + 1]))
+                    chore.SetCurrentUser(flags[index + 1]);
+                }
+                else if (flags[index] == "-$") //special flag for setting the datenextdue, not for user's to use
+                {
+                    try
                     {
-                        chore.SetCurrentUser(users.Where(c => c.Nickname == flags[index + 1]).ToArray()[0]);
+                        chore.DateNextDue = DateTime.Parse(flags[index + 1]);
                     }
-                    else
+                    catch (Exception e)
                     {
-                        chore = initial;
-                        return false;
+                        //this is very bad, so hopefully it doesn't happen
                     }
                 }
             }
